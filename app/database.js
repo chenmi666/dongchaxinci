@@ -85,9 +85,9 @@ class DatabaseManager {
     const insertCat = this.db.prepare(
       'INSERT OR IGNORE INTO categories(name, pytrends_id) VALUES (?, ?)'
     );
-    insertCat.run('Business', 7);
-    insertCat.run('Technology', 5);
-    insertCat.run('Health', 8);
+    insertCat.run('Business', 3);
+    insertCat.run('Technology', 18);
+    insertCat.run('Health', 7);
   }
 
   close() {

@@ -1,6 +1,6 @@
 {
   "name": "trend-opportunity-radar",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Trend Opportunity Radar - Node.js + SQLite version",
   "main": "web/server.js",
   "scripts": {
@@ -20,8 +20,9 @@
     "dotenv": "^17.4.2",
     "ejs": "^6.0.1",
     "express": "^5.2.1",
-    "google-trends-api": "^4.9.2",
     "node-cron": "^4.5.0",
-    "openai": "^6.44.0"
+    "openai": "^6.44.0",
+    "playwright": "^1.61.0",
+    "xml2js": "^0.6.2"
   }
 }

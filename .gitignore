@@ -11,7 +11,7 @@ data/trends.db-shm
 data/trends.db-wal
 data/raw/
 data/export/
-data/startup.log
+data/*.log
 
 # Env
 .env

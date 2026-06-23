@@ -10,7 +10,7 @@ const DB_PATH = path.join(DATA_DIR, 'trends.db');
 const defaults = {
   TRENDS_GEO: 'US',
   TRENDS_TIMEFRAME: 'now 7-d',
-  TRENDS_CATEGORIES: { Business: 7, Technology: 5, Health: 8 },
+  TRENDS_CATEGORIES: { Business: 1, Technology: 2, Health: 3 },
   TRENDS_MAX_KEYWORDS: 100,
   AI_MODEL: 'glm-5.2',
   AI_MAX_TOKENS: 500,
