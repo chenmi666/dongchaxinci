@@ -1,0 +1,61 @@
+body {
+    font-size: 0.95rem;
+}
+
+.navbar-brand {
+    font-size: 1.1rem;
+    letter-spacing: -0.5px;
+}
+
+.card {
+    border-radius: 0.5rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+.card-header {
+    background-color: #f8f9fa;
+    font-weight: 500;
+    border-bottom: 1px solid rgba(0,0,0,0.06);
+}
+
+.table th {
+    font-weight: 600;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.table td {
+    vertical-align: middle;
+}
+
+.badge {
+    font-weight: 500;
+}
+
+.btn-sm {
+    font-size: 0.85rem;
+}
+
+.markdown-content pre {
+    max-height: 600px;
+    overflow-y: auto;
+}
+
+#trendChart {
+    max-height: 250px;
+}
+
+@media (max-width: 768px) {
+    .container {
+        padding-left: 12px;
+        padding-right: 12px;
+    }
+    .card-body {
+        padding: 0.75rem;
+    }
+}
+
+.footer {
+    font-size: 0.8rem;
+}

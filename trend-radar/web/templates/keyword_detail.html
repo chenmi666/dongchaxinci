@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}{{ kw.keyword }} - Trend Opportunity Radar{% endblock %}
+
+{% block content %}
+<div class="mb-3">
+    <a href="/" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left"></i> 返回</a>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-8">
+        <h3>{{ kw.keyword }}</h3>
+        <div>
+            <span class="badge bg-{{ 'success' if kw.status == 'long_term' else 'warning' if kw.status == 'event_driven' else 'secondary' }} fs-6 me-2">
+                {{ {'long_term':'长期需求','event_driven':'事件型','pending':'待分析'}[kw.status] or kw.status }}
+            </span>
+            <span class="badge bg-{{ 'info' if kw.category_name == 'Technology' else 'success' if kw.category_name == 'Health' else 'secondary' }} fs-6 me-2">
+                {{ kw.category_name }}
+            </span>
+            <small class="text-muted">首次: {{ kw.first_seen }} | 最近: {{ kw.last_seen }} | 峰值: {{ kw.peak_score }}</small>
+        </div>
+    </div>
+    <div class="col-md-4 text-end">
+        <div id="scoreDisplay" class="display-4 fw-bold text-primary">--</div>
+        <small class="text-muted">机会评分</small>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header"><i class="bi bi-graph-up"></i> 90天趋势变化</div>
+    <div class="card-body">
+        <canvas id="trendChart" height="250"></canvas>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header"><i class="bi bi-clipboard-data"></i> AI 分析记录</div>
+    <div class="card-body p-0" id="analysisList">
+        <div class="text-center text-muted py-3">加载中...</div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const KW_ID = {{ kw.id }};
+
+async function loadKeyword() {
+    const res = await fetch(`/api/keyword/${KW_ID}`);
+    const data = await res.json();
+    const kw = data.keyword;
+    const analysis = data.analysis;
+
+    document.getElementById('scoreDisplay').textContent = analysis ? analysis.opportunity_score : '--';
+
+    const history = data.history || [];
+    if (history.length > 0) {
+        const ctx = document.getElementById('trendChart').getContext('2d');
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: history.map(h => h.date),
+                datasets: [{
+                    label: '兴趣分数',
+                    data: history.map(h => h.interest_score),
+                    borderColor: '#0d6efd',
+                    backgroundColor: 'rgba(13,110,253,0.1)',
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 3,
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { display: false } },
+                scales: {
+                    y: { beginAtZero: true, max: 100 },
+                    x: { ticks: { maxTicksLimit: 15 } }
+                }
+            }
+        });
+    } else {
+        document.getElementById('trendChart').parentElement.innerHTML = '<div class="text-center text-muted py-4">暂无趋势数据</div>';
+    }
+
+    const list = document.getElementById('analysisList');
+    list.innerHTML = '';
+    if (data.all_analyses && data.all_analyses.length > 0) {
+        data.all_analyses.forEach(a => {
+            list.innerHTML += `<div class="border-bottom p-3">
+                <div class="d-flex justify-content-between">
+                    <strong>${a.analyzed_date}</strong>
+                    <span class="badge bg-${a.is_event_driven ? 'warning' : 'success'}">${a.is_event_driven ? '事件型' : '长期需求'} · ${a.opportunity_score}分</span>
+                </div>
+                <small class="text-muted">${a.reasoning || '--'}</small>
+                <div><small class="text-muted">下次分析: ${a.relook_days}天后</small></div>
+            </div>`;
+        });
+    } else {
+        list.innerHTML = '<div class="text-center text-muted py-3">暂无AI分析记录</div>';
+    }
+}
+
+loadKeyword();
+</script>
+{% endblock %}

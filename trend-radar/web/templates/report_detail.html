@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}报告 {{ report.report_date }} - Trend Opportunity Radar{% endblock %}
+
+{% block content %}
+<div class="mb-3">
+    <a href="/reports" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left"></i> 报告列表</a>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between">
+        <span><i class="bi bi-file-text"></i> 每日报告 · {{ report.report_date }}</span>
+        <small class="text-muted">生成于 {{ report.generated_at }}</small>
+    </div>
+    <div class="card-body">
+        <div class="row text-center g-3 mb-4">
+            <div class="col-3"><h5 class="text-primary">{{ report.total_keywords }}</h5><small>总词数</small></div>
+            <div class="col-3"><h5 class="text-info">{{ report.new_keywords }}</h5><small>新增</small></div>
+            <div class="col-3"><h5 class="text-success">{{ report.long_term_cnt }}</h5><small>长期需求</small></div>
+            <div class="col-3"><h5 class="text-warning">{{ report.event_cnt }}</h5><small>事件型</small></div>
+        </div>
+
+        {% if report.top_opportunities %}
+        <h5>Top 创业机会</h5>
+        <div class="table-responsive">
+            <table class="table table-sm">
+                <thead><tr><th>#</th><th>关键词</th><th>分类</th><th>评分</th><th>理由</th></tr></thead>
+                <tbody>
+                {% for opp in report.top_opportunities[:10] %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td><a href="/keyword/{{ opp.id if opp.id else '' }}" class="text-decoration-none">{{ opp.keyword }}</a></td>
+                    <td>{{ opp.category }}</td>
+                    <td><span class="badge bg-{{ 'success' if opp.score >= 70 else 'warning' if opp.score >= 40 else 'danger' }}">{{ opp.score }}</span></td>
+                    <td><small>{{ opp.reasoning }}</small></td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+
+        {% if report.summary_md %}
+        <hr>
+        <div class="markdown-content">
+            <pre class="bg-light p-3 rounded" style="white-space: pre-wrap; font-size: 0.9rem;">{{ report.summary_md }}</pre>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

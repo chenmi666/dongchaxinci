@@ -1,0 +1,192 @@
+{% extends "base.html" %}
+{% block title %}主面板 - Trend Opportunity Radar{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="mb-0"><i class="bi bi-speedometer2"></i> 机会雷达 · 主面板</h3>
+    <div>
+        <span class="badge bg-secondary me-2" id="lastFetch">最后同步: --</span>
+        <button class="btn btn-sm btn-outline-primary" onclick="triggerFetch()"><i class="bi bi-arrow-clockwise"></i> 立即同步</button>
+        <a href="/api/export/csv" class="btn btn-sm btn-outline-success"><i class="bi bi-download"></i> 导出CSV</a>
+    </div>
+</div>
+
+<div class="row g-3 mb-4" id="statsCards">
+    <div class="col-md-2 col-6">
+        <div class="card border-primary h-100">
+            <div class="card-body text-center">
+                <h5 class="card-title text-primary" id="statTotal">--</h5>
+                <small class="text-muted">关键词总数</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2 col-6">
+        <div class="card border-success h-100">
+            <div class="card-body text-center">
+                <h5 class="card-title text-success" id="statLongTerm">--</h5>
+                <small class="text-muted">长期需求</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2 col-6">
+        <div class="card border-warning h-100">
+            <div class="card-body text-center">
+                <h5 class="card-title text-warning" id="statEvent">--</h5>
+                <small class="text-muted">事件型</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2 col-6">
+        <div class="card border-info h-100">
+            <div class="card-body text-center">
+                <h5 class="card-title text-info" id="statNew">--</h5>
+                <small class="text-muted">今日新增</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2 col-6">
+        <div class="card border-secondary h-100">
+            <div class="card-body text-center">
+                <h5 class="card-title text-secondary" id="statAnalyses">--</h5>
+                <small class="text-muted">AI分析次数</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2 col-6">
+        <div class="card border-danger h-100">
+            <div class="card-body text-center">
+                <h5 class="card-title text-danger" id="statTrends">--</h5>
+                <small class="text-muted">趋势记录</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-trophy"></i> 创业机会排行 (长期需求型)</span>
+                <div>
+                    <select class="form-select form-select-sm d-inline-block w-auto" id="categoryFilter" onchange="loadDashboard()">
+                        <option value="">全部分类</option>
+                        <option value="Business">商业</option>
+                        <option value="Technology">技术</option>
+                        <option value="Health">健康</option>
+                    </select>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0" id="opportunityTable">
+                        <thead class="table-light">
+                            <tr>
+                                <th>#</th>
+                                <th>关键词</th>
+                                <th>分类</th>
+                                <th>评分</th>
+                                <th>AI分析</th>
+                                <th>活跃天数</th>
+                                <th>峰值</th>
+                            </tr>
+                        </thead>
+                        <tbody id="oppBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card mb-3">
+            <div class="card-header"><i class="bi bi-arrow-up-circle"></i> 趋势上升关键词</div>
+            <div class="card-body p-0">
+                <table class="table table-sm mb-0" id="risingTable">
+                    <thead class="table-light">
+                        <tr><th>关键词</th><th>分类</th><th>变动</th></tr>
+                    </thead>
+                    <tbody id="risingBody"></tbody>
+                </table>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-header"><i class="bi bi-clock-history"></i> 最近抓取日志</div>
+            <div class="card-body p-0">
+                <table class="table table-sm mb-0" id="logTable">
+                    <thead class="table-light">
+                        <tr><th>日期</th><th>分类</th><th>数量</th><th>状态</th></tr>
+                    </thead>
+                    <tbody id="logBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadDashboard() {
+    const cat = document.getElementById('categoryFilter').value;
+    const res = await fetch(`/api/dashboard?category=${cat}`);
+    const data = await res.json();
+
+    const s = data.stats;
+    document.getElementById('statTotal').textContent = s.total_keywords;
+    document.getElementById('statLongTerm').textContent = s.long_term;
+    document.getElementById('statEvent').textContent = s.event_driven;
+    document.getElementById('statNew').textContent = data.new_keywords;
+    document.getElementById('statAnalyses').textContent = s.total_analyses;
+    document.getElementById('statTrends').textContent = s.total_trends;
+    document.getElementById('lastFetch').textContent = '最后同步: ' + (data.last_fetch || '从未');
+
+    const tbody = document.getElementById('oppBody');
+    tbody.innerHTML = '';
+    data.top_opportunities.forEach((kw, i) => {
+        const days = kw.last_seen && kw.first_seen
+            ? Math.max(1, Math.round((new Date(kw.last_seen) - new Date(kw.first_seen)) / 86400000))
+            : '?';
+        tbody.innerHTML += `<tr>
+            <td>${i + 1}</td>
+            <td><a href="/keyword/${kw.id}" class="text-decoration-none fw-medium">${kw.keyword}</a></td>
+            <td><span class="badge bg-${kw.category_name === 'Technology' ? 'info' : kw.category_name === 'Health' ? 'success' : 'secondary'}">${kw.category_name}</span></td>
+            <td><span class="badge bg-${kw.opportunity_score >= 70 ? 'success' : kw.opportunity_score >= 40 ? 'warning' : 'danger'} fs-6">${kw.opportunity_score}</span></td>
+            <td><small class="text-muted">${kw.reasoning || '--'}</small></td>
+            <td>${days}天</td>
+            <td>${kw.peak_score || 0}</td>
+        </tr>`;
+    });
+
+    const rbody = document.getElementById('risingBody');
+    rbody.innerHTML = '';
+    (data.rising || []).forEach(r => {
+        rbody.innerHTML += `<tr><td>${r.keyword}</td><td>${r.category_name}</td><td class="text-success">↑ ${r.score_today || 0}</td></tr>`;
+    });
+
+    const lbody = document.getElementById('logBody');
+    lbody.innerHTML = '';
+    const logs = await fetch('/api/fetch_logs').then(r => r.json());
+    (logs.logs || []).slice(0, 10).forEach(log => {
+        lbody.innerHTML += `<tr>
+            <td><small>${log.fetch_date}</small></td>
+            <td>${log.category}</td>
+            <td>${log.keywords_count}</td>
+            <td><span class="badge bg-${log.status === 'success' ? 'success' : 'danger'}">${log.status}</span></td>
+        </tr>`;
+    });
+}
+
+async function triggerFetch() {
+    const btn = event.target;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+    await fetch('/api/trigger_fetch', { method: 'POST' });
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> 立即同步';
+    loadDashboard();
+}
+
+loadDashboard();
+setInterval(loadDashboard, 60000);
+</script>
+{% endblock %}
