@@ -65,22 +65,21 @@ class TrendsScraper {
       }
       await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
-      // Smart wait: wait until at least 10 volume indicators appear
+      // Smart wait: wait until ANY volume data appears (then settle for rendering)
       let preCount = 0;
       try {
         await page.waitForFunction(() => {
           const text = document.body.innerText;
-          const m = text.match(/[0-9]+万\+|[0-9]{4,}\+|[0-9]+,[0-9]+\+/g);
-          return m && m.length >= 10;
+          return /[0-9]+万\+|[0-9]{4,}\+|[0-9]+,[0-9]+\+/.test(text);
         }, { timeout: 20000 });
       } catch (_) {
-        logger.debug('scraper', `[${catName}] 等待超时(20s)，可能数据较少`);
+        logger.info('scraper', `[${catName}] 等待超时(20s)，可能无数据`);
       }
       preCount = await page.evaluate(() => {
         const text = document.body.innerText;
         return (text.match(/[0-9]+万\+|[0-9]{4,}\+|[0-9]+,[0-9]+\+/g) || []).length;
       });
-      logger.debug('scraper', `[${catName}] 等待后可见趋势: ${preCount} 条, 等待10s渲染...`);
+      logger.info('scraper', `[${catName}] 等待后可见趋势: ${preCount} 条, 等待10s渲染...`);
 
       // Extra settle time for JS rendering
       await page.waitForTimeout(10000);
