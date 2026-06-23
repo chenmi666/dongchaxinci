@@ -1,10 +1,9 @@
 import csv
 import io
-import json
 from datetime import date, datetime
-from pathlib import Path
+from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request, Form, Query
+from fastapi import FastAPI, Request, Form
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -15,20 +14,44 @@ from app.trends_fetcher import TrendsFetcher
 from app.ai_analyzer import AIAnalyzer
 from app.reporter import DailyReporter
 
-db = Database()
+_db = None
+_templates = None
+
+
+def get_db():
+    global _db
+    if _db is None:
+        _db = Database()
+    return _db
+
+
+def get_templates():
+    global _templates
+    if _templates is None:
+        _templates = Jinja2Templates(directory=str(BASE_DIR / "web" / "templates"))
+    return _templates
+
 
 def get_fetcher():
     return TrendsFetcher()
 
+
 def get_analyzer():
-    return AIAnalyzer(db)
+    return AIAnalyzer(get_db())
+
 
 def get_reporter():
-    return DailyReporter(db, get_analyzer())
+    return DailyReporter(get_db(), get_analyzer())
 
-app = FastAPI(title="Trend Opportunity Radar")
 
-templates = Jinja2Templates(directory=str(BASE_DIR / "web" / "templates"))
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    get_db()
+    yield
+
+
+app = FastAPI(title="Trend Opportunity Radar", lifespan=lifespan)
+
 static_dir = BASE_DIR / "web" / "static"
 static_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
@@ -38,49 +61,52 @@ app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
 @app.get("/", response_class=HTMLResponse)
 def dashboard(request: Request):
-    return templates.TemplateResponse(request, "dashboard.html", {
+    return get_templates().TemplateResponse(request, "dashboard.html", {
         "now": datetime.now().strftime("%Y-%m-%d %H:%M"),
     })
 
 
 @app.get("/keyword/{kw_id}", response_class=HTMLResponse)
 def keyword_detail(request: Request, kw_id: int):
+    db = get_db()
     kw = db.get_keyword_by_id(kw_id)
     if not kw:
         return HTMLResponse("关键词不存在", status_code=404)
-    return templates.TemplateResponse(request, "keyword_detail.html", {
+    return get_templates().TemplateResponse(request, "keyword_detail.html", {
         "kw": kw,
     })
 
 
 @app.get("/reports", response_class=HTMLResponse)
 def reports_page(request: Request):
-    return templates.TemplateResponse(request, "reports.html")
+    return get_templates().TemplateResponse(request, "reports.html")
 
 
 @app.get("/report/{report_date}", response_class=HTMLResponse)
 def report_detail(request: Request, report_date: str):
+    db = get_db()
     report = db.get_report(report_date)
     if not report:
         return HTMLResponse("报告不存在", status_code=404)
-    return templates.TemplateResponse(request, "report_detail.html", {
+    return get_templates().TemplateResponse(request, "report_detail.html", {
         "report": report,
     })
 
 
 @app.get("/history", response_class=HTMLResponse)
 def history_page(request: Request):
-    return templates.TemplateResponse(request, "history.html")
+    return get_templates().TemplateResponse(request, "history.html")
 
 
 @app.get("/settings", response_class=HTMLResponse)
 def settings_page(request: Request):
+    db = get_db()
     api_key = settings.get_ai_api_key(db)
     model = settings.get_ai_model(db)
     api_base = settings.get_ai_api_base(db)
     hour, minute = settings.get_fetch_time(db)
     proxy = settings.get_proxy(db)
-    return templates.TemplateResponse(request, "settings.html", {
+    return get_templates().TemplateResponse(request, "settings.html", {
         "api_key": api_key,
         "model": model,
         "api_base": api_base,
@@ -94,12 +120,12 @@ def settings_page(request: Request):
 
 @app.get("/api/dashboard")
 def api_dashboard(category: str = None):
+    db = get_db()
     top = db.get_top_opportunities(limit=20, category=category)
     stats = db.get_stats()
     rising = db.get_trending_up_keywords(min_days=3, limit=10)
     last_fetch = db.get_last_fetch_date()
     new_kw = db.get_new_keywords_count(days=1)
-
     return {
         "top_opportunities": top,
         "stats": stats,
@@ -111,6 +137,7 @@ def api_dashboard(category: str = None):
 
 @app.get("/api/keyword/{kw_id}")
 def api_keyword(kw_id: int):
+    db = get_db()
     kw = db.get_keyword_by_id(kw_id)
     if not kw:
         return JSONResponse({"error": "not found"}, status_code=404)
@@ -129,18 +156,21 @@ def api_keyword(kw_id: int):
 
 @app.get("/api/keyword/{kw_id}/trend")
 def api_keyword_trend(kw_id: int):
+    db = get_db()
     history = db.get_trend_history(kw_id, days=90)
     return {"history": history}
 
 
 @app.get("/api/reports")
 def api_reports():
+    db = get_db()
     reports = db.get_reports(limit=30)
     return {"reports": reports}
 
 
 @app.get("/api/history")
 def api_history(category: str = None, status: str = None, search: str = None):
+    db = get_db()
     if search:
         keywords = db.search_keywords(search)
     elif status:
@@ -149,12 +179,10 @@ def api_history(category: str = None, status: str = None, search: str = None):
             keywords = [k for k in keywords if k["category_name"] == category]
     elif category:
         top = db.get_top_opportunities(limit=200, category=category)
-        all_kw = []
+        results = []
         for t in top:
-            all_kw.append(t)
-            more = db.get_keywords_by_status("event_driven")
-            all_kw.extend([m for m in more if m["category_name"] == category])
-        keywords = all_kw[:200]
+            results.append(t)
+        keywords = results[:200]
     else:
         lt = db.get_keywords_by_status("long_term")
         ev = db.get_keywords_by_status("event_driven")
@@ -164,12 +192,12 @@ def api_history(category: str = None, status: str = None, search: str = None):
 
 @app.get("/api/stats")
 def api_stats():
-    return db.get_stats()
+    return get_db().get_stats()
 
 
 @app.get("/api/fetch_logs")
 def api_fetch_logs():
-    return {"logs": db.get_recent_fetch_logs()}
+    return {"logs": get_db().get_recent_fetch_logs()}
 
 
 # ─── Settings API ────────────────────────────────────────────
@@ -183,6 +211,7 @@ def api_save_settings(
     fetch_minute: int = Form(0),
     proxy: str = Form(""),
 ):
+    db = get_db()
     if ai_api_key:
         db.set_setting("ai_api_key", ai_api_key)
     db.set_setting("ai_model", ai_model)
@@ -216,6 +245,7 @@ def api_test_openai(
 
 @app.get("/api/export/csv")
 def export_csv():
+    db = get_db()
     top = db.get_top_opportunities(limit=200)
     output = io.StringIO()
     w = csv.DictWriter(output, fieldnames=[
@@ -248,6 +278,7 @@ def export_csv():
 
 @app.post("/api/trigger_fetch")
 def trigger_fetch():
+    db = get_db()
     from app.scheduler import TrendScheduler
     sched = TrendScheduler(db, get_fetcher(), get_analyzer(), get_reporter())
     sched.daily_job()
