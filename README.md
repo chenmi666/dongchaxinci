@@ -7,11 +7,12 @@
 ## 功能
 
 - **自动抓取** — 每天定时拉取 Google Trends 3 个分类的热词
-  - 主方案：Playwright 渲染页面后提取 DOM（26+ 条/分类）
+  - 主方案：Playwright 渲染页面后提取 DOM（26+ 条/分类，保留原始搜索量如"1万+"）
   - 降级方案：RSS Feed（10 条/分类，页面不可用时自动切换）
 - **AI 分析** — 调用大模型判断关键词是"事件型热词"还是"长期需求"，给出机会评分 0-100
-- **90 天追踪** — 记录每个关键词的兴趣分数变化，画出趋势曲线
+- **90 天追踪** — 记录每个关键词的兴趣分数 + 搜索量变化，画出趋势曲线
 - **每日报告** — 自动生成 Markdown 报告，Top 20 创业机会排行
+- **自动维护** — 每天清理 7 天前的抓取日志，90 天前的过期趋势数据
 - **Web Dashboard** — 零配置浏览器界面，支持 CSV 导出
 
 ## 快速开始
@@ -107,7 +108,7 @@ npm start
 ├── app/
 │   ├── config.js           # 配置管理（端口、路径、AI 设置）
 │   ├── database.js         # SQLite CRUD（兼容 v1 数据）
-│   ├── trends-scraper.js   # Playwright 页面渲染 + DOM 提取
+│   ├── trends-scraper.js   # Playwright 渲染 + DOM 提取（智能等待≥10条数据）
 │   ├── trends-fetcher.js   # 抓取调度（3级降级：Playwright → RSS → 空数据）
 │   ├── ai-analyzer.js      # AI 分析
 │   ├── reporter.js         # 报告生成
@@ -118,7 +119,7 @@ npm start
 │   └── static/             # CSS
 └── data/
     ├── trends.db           # SQLite 数据库（v1/v2 兼容）
-    ├── startup.log         # 启动日志
+    ├── app.log             # 运行日志（自动轮转，500条内存缓存）
     └── raw/                # 原始 CSV 备份
 ```
 
@@ -142,7 +143,7 @@ npm start
 | GET | `/api/dashboard` | 主面板数据（含分类筛选） |
 | GET | `/api/stats` | 系统统计 |
 | GET | `/api/keyword/{id}` | 关键词详情 + 趋势 + AI分析 |
-| GET | `/api/keyword/{id}/trend` | 关键词趋势数据 |
+| GET | `/api/keyword/{id}/trend` | 关键词趋势数据（含搜索量） |
 | GET | `/api/history` | 历史关键词搜索/筛选 |
 | GET | `/api/reports` | 每日报告列表 |
 | GET | `/api/fetch-logs` | 抓取日志 |
