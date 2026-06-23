@@ -1,5 +1,5 @@
 {
   "type": "node",
-  "buildCommand": "npm install",
+  "buildCommand": "npm install && npx playwright install chromium --with-deps",
   "startCommand": "node web/server.js"
 }

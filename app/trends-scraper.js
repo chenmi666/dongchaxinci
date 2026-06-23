@@ -8,11 +8,23 @@ const MAX_KEYWORDS = 100;
 class TrendsScraper {
   async scrapeAll() {
     logger.info('scraper', '启动 Playwright 浏览器...');
-    const browser = await chromium.launch({
-      channel: 'chrome',
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    });
+
+    // Try bundled Chromium first; fall back to system Chrome for local dev
+    let launchOpts = [
+      { headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] },
+      { channel: 'chrome', headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] },
+    ];
+    let browser;
+    for (const opts of launchOpts) {
+      try {
+        browser = await chromium.launch(opts);
+        logger.info('scraper', `Chromium 启动方式: ${opts.channel || 'bundled'}`);
+        break;
+      } catch (e) {
+        logger.debug('scraper', `启动方式 ${opts.channel || 'bundled'} 失败: ${e.message}`);
+      }
+    }
+    if (!browser) throw new Error('所有 Chromium 启动方式均失败');
 
     const allResults = {};
     try {
@@ -50,10 +62,21 @@ class TrendsScraper {
     for (let attempt = 0; attempt < 2 && (!items || items.length === 0); attempt++) {
       if (attempt > 0) {
         logger.debug('scraper', `[${catName}] 重试第${attempt+1}次...`);
-        await page.waitForTimeout(3000);
       }
       await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-      await page.waitForTimeout(6000);
+
+      // Smart wait: wait until body text contains a search volume indicator
+      try {
+        await page.waitForFunction(() => {
+          const text = document.body.innerText;
+          return /[0-9,]+\+/.test(text) || /[0-9]+万\+/.test(text);
+        }, { timeout: 15000 });
+      } catch (_) {
+        logger.debug('scraper', `[${catName}] 等待数据超时，尝试直接提取`);
+      }
+      // Extra settle time for JS rendering
+      await page.waitForTimeout(2000);
+
       items = await this._parseDom(page, catName);
     }
 

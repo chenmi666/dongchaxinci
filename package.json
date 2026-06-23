@@ -5,7 +5,8 @@
   "main": "web/server.js",
   "scripts": {
     "start": "node web/server.js",
-    "dev": "node --watch web/server.js"
+    "dev": "node --watch web/server.js",
+    "postinstall": "npx playwright install chromium --with-deps || true"
   },
   "keywords": [
     "trends",

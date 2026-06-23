@@ -4,6 +4,7 @@ __pycache__/
 
 # Node.js
 node_modules/
+_test_*.js
 
 # Data
 data/trends.db
