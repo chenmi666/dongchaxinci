@@ -2,6 +2,7 @@ const googleTrends = require('google-trends-api');
 const fs = require('fs');
 const path = require('path');
 const config = require('./config');
+const logger = require('./logger');
 
 class TrendsFetcher {
   constructor() {
@@ -12,8 +13,11 @@ class TrendsFetcher {
 
   async fetchCategoryTrends(categoryName, categoryId) {
     let results = [];
+    let attempt = 0;
 
     // Approach 1: daily trending searches
+    attempt++;
+    logger.info('fetcher', `[${categoryName}] 尝试方式${attempt}: dailyTrends`);
     try {
       const html = await googleTrends.dailyTrends({
         trendDate: new Date(),
@@ -38,11 +42,19 @@ class TrendsFetcher {
             });
           }
         }
-        if (results.length > 0) return results;
+        if (results.length > 0) {
+          logger.info('fetcher', `[${categoryName}] 方式1成功: ${results.length} 条`);
+          return results;
+        }
       }
-    } catch (_) {}
+      logger.debug('fetcher', `[${categoryName}] 方式1无数据`);
+    } catch (e) {
+      logger.warn('fetcher', `[${categoryName}] 方式1失败: ${e.message}`);
+    }
 
     // Approach 2: realtime trending searches
+    attempt++;
+    logger.info('fetcher', `[${categoryName}] 尝试方式${attempt}: realtimeTrends`);
     try {
       const data = await googleTrends.realtimeTrends({
         geo: this.geo,
@@ -67,11 +79,19 @@ class TrendsFetcher {
             });
           }
         }
-        if (results.length > 0) return results;
+        if (results.length > 0) {
+          logger.info('fetcher', `[${categoryName}] 方式2成功: ${results.length} 条`);
+          return results;
+        }
       }
-    } catch (_) {}
+      logger.debug('fetcher', `[${categoryName}] 方式2无数据`);
+    } catch (e) {
+      logger.warn('fetcher', `[${categoryName}] 方式2失败: ${e.message}`);
+    }
 
     // Approach 3: related queries for category
+    attempt++;
+    logger.info('fetcher', `[${categoryName}] 尝试方式${attempt}: relatedQueries`);
     try {
       const seedMap = { Business: 'business', Technology: 'technology', Health: 'health' };
       const seed = seedMap[categoryName] || 'news';
@@ -100,14 +120,18 @@ class TrendsFetcher {
             date: today,
           });
         }
-        if (results.length > 0) return results;
+        if (results.length > 0) {
+          logger.info('fetcher', `[${categoryName}] 方式3成功: ${results.length} 条`);
+          return results;
+        }
       }
-    } catch (_) {}
-
-    if (results.length === 0) {
-      throw new Error('所有抓取方式均失败');
+      logger.debug('fetcher', `[${categoryName}] 方式3无数据`);
+    } catch (e) {
+      logger.warn('fetcher', `[${categoryName}] 方式3失败: ${e.message}`);
     }
-    return results;
+
+    logger.error('fetcher', `[${categoryName}] 3种方式全部失败`);
+    throw new Error('所有抓取方式均失败');
   }
 
   async fetchAll() {
@@ -115,13 +139,15 @@ class TrendsFetcher {
     const allResults = {};
     for (const [catName, catId] of Object.entries(config.defaults.TRENDS_CATEGORIES)) {
       try {
+        logger.info('fetcher', `开始抓取 ${catName}...`);
         const items = await this.fetchCategoryTrends(catName, catId);
         allResults[catName] = items;
         this._saveCsv(catName, todayStr, items);
+        logger.info('fetcher', `${catName} 抓取完成: ${items.length} 条`);
         await new Promise(r => setTimeout(r, 3000));
       } catch (e) {
         allResults[catName] = [];
-        console.error(`  [WARN] ${catName} fetch failed: ${e.message}`);
+        logger.error('fetcher', `${catName} 抓取失败: ${e.message}`);
       }
     }
     this._saveMergedCsv(todayStr, allResults);

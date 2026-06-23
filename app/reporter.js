@@ -1,4 +1,5 @@
 const config = require('./config');
+const logger = require('./logger');
 
 class DailyReporter {
   constructor(db, analyzer) {
@@ -66,6 +67,7 @@ class DailyReporter {
 
     this.db.saveReport(todayStr, totalKw, newKw, longTermCnt, eventCnt, oppList, summaryMd);
 
+    logger.info('reporter', `报告 ${todayStr}: 总词=${totalKw} 新增=${newKw} 长期=${longTermCnt} 事件=${eventCnt} Top20=${topOpps.length}`);
     return {
       date: todayStr,
       total_keywords: totalKw,

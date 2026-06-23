@@ -45,6 +45,17 @@
                         <input type="text" class="form-control" id="proxy" value="${proxy || ''}" placeholder="http://127.0.0.1:7890">
                         <div class="form-text">如果 trends.google.com 被屏蔽，填写代理地址</div>
                     </div>
+                    <div class="mb-3">
+                        <label class="form-label">日志级别</label>
+                        <select class="form-select" id="logLevel">
+                            <option value="off"${log_level === 'off' ? ' selected' : ''}>关闭</option>
+                            <option value="error"${log_level === 'error' ? ' selected' : ''}>仅错误</option>
+                            <option value="warn"${log_level === 'warn' ? ' selected' : ''}>警告及以上</option>
+                            <option value="info"${log_level === 'info' ? ' selected' : ''}>信息及以上 (默认)</option>
+                            <option value="debug"${log_level === 'debug' ? ' selected' : ''}>全部调试</option>
+                        </select>
+                        <div class="form-text">控制台和文件日志的输出级别，可在 /logs 页面实时查看</div>
+                    </div>
                     <button type="button" class="btn btn-primary me-2" onclick="saveSettings()">
                         <i class="bi bi-save"></i> 保存设置
                     </button>
@@ -106,6 +117,7 @@ async function saveSettings() {
     form.append('fetch_hour', document.getElementById('fetchHour').value);
     form.append('fetch_minute', document.getElementById('fetchMinute').value);
     form.append('proxy', document.getElementById('proxy').value);
+    form.append('log_level', document.getElementById('logLevel').value);
     const res = await fetch('/api/settings', { method: 'POST', body: form, headers: {'Content-Type': 'application/x-www-form-urlencoded'} });
     const data = await res.json();
     document.getElementById('settingsMsg').innerHTML = '<div class="alert alert-success">设置已保存</div>';

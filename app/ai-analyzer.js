@@ -1,5 +1,6 @@
 const OpenAI = require('openai');
 const config = require('./config');
+const logger = require('./logger');
 
 const SYSTEM_PROMPT = `你是一个创业机会识别专家。给定一个关键词及其在Google Trends上的趋势数据，
 请判断该关键词属于以下哪一类：
@@ -78,9 +79,11 @@ class AIAnalyzer {
     };
 
     try {
+      logger.debug('ai', `分析关键词: ${keyword}`);
       const resp = await this.client.chat.completions.create(kwargs);
       const text = resp.choices[0].message.content.trim();
       const data = JSON.parse(text);
+      logger.debug('ai', `${keyword} => ${data.is_event_driven ? '事件型' : '长期需求'} 评分:${data.opportunity_score}`);
       return {
         is_event_driven: !!data.is_event_driven,
         opportunity_score: parseInt(data.opportunity_score, 10) || 0,
@@ -88,6 +91,7 @@ class AIAnalyzer {
         relook_days: parseInt(data.relook_days, 10) || 7,
       };
     } catch (e) {
+      logger.warn('ai', `${keyword} 分析异常: ${e.message}`);
       return {
         is_event_driven: false,
         opportunity_score: 40,

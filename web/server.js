@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const { stringify } = require('csv-stringify/sync');
 const config = require('../app/config');
+const logger = require('../app/logger');
 const DatabaseManager = require('../app/database');
 const TrendsFetcher = require('../app/trends-fetcher');
 const AIAnalyzer = require('../app/ai-analyzer');
@@ -10,31 +11,18 @@ const DailyReporter = require('../app/reporter');
 const TrendScheduler = require('../app/scheduler');
 
 // ─── Startup ────────────────────────────────────────────
-const STARTUP_LOG = [];
 let STARTUP_OK = false;
-const LOG_FILE = path.resolve(process.env.STARTUP_LOG || path.join(config.DATA_DIR, 'startup.log'));
-
-function log(msg) {
-  const ts = new Date().toISOString().slice(0, 19).replace('T', ' ');
-  const line = `[${ts}] ${msg}`;
-  STARTUP_LOG.push(line);
-  console.error(line);
-  try {
-    fs.mkdirSync(path.dirname(LOG_FILE), { recursive: true });
-    fs.appendFileSync(LOG_FILE, line + '\n', 'utf-8');
-  } catch (_) {}
-}
-
 let db, fetcher, analyzer, reporter, scheduler;
 
 try {
-  log('Initializing Database...');
+  logger.info('system', '正在初始化数据库...');
   db = new DatabaseManager();
-  log(`Database OK at ${db.dbPath}`);
+  logger.info('system', `数据库已连接: ${db.dbPath}`);
+  logger.init(db);
   STARTUP_OK = true;
 } catch (e) {
-  log(`FATAL DB init: ${e.message}`);
-  log(e.stack);
+  logger.error('system', `数据库初始化失败: ${e.message}`);
+  logger.error('system', e.stack);
 }
 
 // ─── Express app ────────────────────────────────────────
@@ -45,6 +33,18 @@ app.use('/static', express.static(path.join(__dirname, 'static')));
 
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
+
+// request logger
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    const ms = Date.now() - start;
+    if (req.path.startsWith('/api/')) {
+      logger.debug('http', `${req.method} ${req.path} ${res.statusCode} ${ms}ms`);
+    }
+  });
+  next();
+});
 
 // ─── Helpers ────────────────────────────────────────────
 function initModules() {
@@ -57,11 +57,11 @@ function initModules() {
   }
 }
 
-// ─── Debug ──────────────────────────────────────────────
+// ─── Debug / Log ────────────────────────────────────────
 app.get('/debug', (req, res) => {
   const status = STARTUP_OK ? 'OK' : 'FAILED';
-  const lines = [`Status: ${status}`, `Routes: ${app.routes ? '...' : 'N/A'}`, ''];
-  lines.push(...STARTUP_LOG);
+  const lines = [`Status: ${status}`, `Log level: ${logger.getLevel()}`, ''];
+  lines.push(...logger.buffer.slice(-50));
   lines.push('');
   if (!db) {
     lines.push('DB is null - startup failed');
@@ -77,15 +77,33 @@ app.get('/debug', (req, res) => {
 });
 
 app.get('/log', (req, res) => {
-  try {
-    if (fs.existsSync(LOG_FILE)) {
-      const text = fs.readFileSync(LOG_FILE, 'utf-8');
-      return res.type('text').send(text || '(empty log)');
-    }
-    res.type('text').send('(no log file)');
-  } catch (e) {
-    res.type('text').send(`(log error: ${e.message})`);
-  }
+  const persisted = logger.getPersisted();
+  const recent = logger.getRecent(200);
+  const combined = persisted + '\n--- recent in-memory ---\n' + recent;
+  res.type('text').send(combined || '(empty log)');
+});
+
+// ─── Log API ────────────────────────────────────────────
+app.get('/api/logs', (req, res) => {
+  const limit = parseInt(req.query.limit, 10) || 100;
+  const level = req.query.level || '';
+  const logs = logger.getRecent(limit, level);
+  const lines = logs.split('\n').filter(Boolean).map(l => {
+    const m = l.match(/^\[(.+?)\] \[(.+?)\] \[(.+?)\] (.+)$/);
+    if (m) return { time: m[1], level: m[2], category: m[3], message: m[4] };
+    return { time: '', level: '', category: '', message: l };
+  });
+  res.json({ logs, lines, level: logger.getLevel(), total: logger.buffer.length });
+});
+
+app.get('/api/logs/export', (req, res) => {
+  const text = logger.getPersisted();
+  const recent = logger.getRecent(500);
+  const combined = text + '\n\n=== 内存日志 (最近500条) ===\n' + recent;
+  const ts = new Date().toISOString().slice(0, 10);
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename=app_log_${ts}.txt`);
+  res.send(combined || '(empty)');
 });
 
 // ─── HTML Pages ─────────────────────────────────────────
@@ -126,6 +144,14 @@ app.get('/settings', (req, res) => {
     fetch_hour: config.getFetchTime(db).hour,
     fetch_minute: config.getFetchTime(db).minute,
     proxy: config.getProxy(db),
+    log_level: logger.getLevel(),
+  });
+});
+
+// ─── /logs page ─────────────────────────────────────────
+app.get('/logs', (req, res) => {
+  res.render('logs', {
+    level: logger.getLevel(),
   });
 });
 
@@ -194,13 +220,16 @@ app.get('/api/fetch-logs', (req, res) => {
 // ─── Settings API ───────────────────────────────────────
 app.post('/api/settings', (req, res) => {
   if (!db) return res.json({ status: 'error', message: '数据库未初始化' });
-  const { ai_api_key, ai_model, ai_api_base, fetch_hour, fetch_minute, proxy } = req.body;
+  const { ai_api_key, ai_model, ai_api_base, fetch_hour, fetch_minute, proxy, log_level } = req.body;
   if (ai_api_key) db.setSetting('ai_api_key', ai_api_key);
   if (ai_model) db.setSetting('ai_model', ai_model);
   if (ai_api_base) db.setSetting('ai_api_base', ai_api_base);
   if (fetch_hour !== undefined) db.setSetting('fetch_hour', String(fetch_hour));
   if (fetch_minute !== undefined) db.setSetting('fetch_minute', String(fetch_minute));
   if (proxy !== undefined) db.setSetting('proxy', proxy);
+  if (log_level && logger.setLevel(log_level)) {
+    logger.info('settings', `日志级别切换为: ${log_level}`);
+  }
   res.json({ status: 'ok' });
 });
 
@@ -214,8 +243,10 @@ app.post('/api/settings/test', async (req, res) => {
       messages: [{ role: 'user', content: 'Hi' }],
       max_tokens: 10,
     });
+    logger.info('settings', 'AI连接测试成功');
     res.json({ status: 'ok', message: `成功: ${(resp.choices[0].message.content || '').slice(0, 30)}` });
   } catch (e) {
+    logger.error('settings', `AI连接测试失败: ${e.message}`);
     res.json({ status: 'error', message: e.message });
   }
 });
@@ -248,8 +279,9 @@ app.post('/api/trigger-fetch', async (req, res) => {
   initModules();
   try {
     await scheduler.dailyJob();
-    res.json({ status: 'ok', message: 'Fetch & analysis completed' });
+    res.json({ status: 'ok', message: '同步完成' });
   } catch (e) {
+    logger.error('trigger', `手动同步失败: ${e.message}`);
     res.json({ status: 'error', message: e.message });
   }
 });
@@ -258,35 +290,38 @@ app.post('/api/trigger-fetch', async (req, res) => {
 const PORT = parseInt(process.env.PORT || String(config.defaults.PORT), 10);
 
 app.listen(PORT, config.defaults.HOST, () => {
-  log('='.repeat(50));
-  log('  Trend Opportunity Radar v1.0 (Node.js)');
-  log('  Node.js + SQLite + AI');
-  log('='.repeat(50));
-  log(`  Database: ${db ? db.dbPath : 'N/A'}`);
-  log(`  Web:      ${config.defaults.HOST}:${PORT}`);
+  logger.info('system', '='.repeat(50));
+  logger.info('system', '  Trend Opportunity Radar v2.0.0 (Node.js)');
+  logger.info('system', '  Node.js + SQLite + AI');
+  logger.info('system', '='.repeat(50));
+  logger.info('system', `  数据库: ${db ? db.dbPath : 'N/A'}`);
+  logger.info('system', `  地址:   ${config.defaults.HOST}:${PORT}`);
+  logger.info('system', `  日志级别: ${logger.getLevel().toUpperCase()}`);
 
   const hasKey = !!config.getAiApiKey(db);
   if (hasKey) {
-    log(`  AI:       [OK] ${config.getAiModel(db)}`);
+    logger.info('system', `  AI:     [OK] ${config.getAiModel(db)}`);
   } else {
-    log(`  AI:       [!!] 请在 /settings 页面配置 API Key`);
+    logger.warn('system', `  AI:     [!!] 请在 /settings 页面配置 API Key`);
   }
 
   const { hour, minute } = config.getFetchTime(db);
-  log(`  Schedule: 每日 ${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`);
-  log('='.repeat(50));
+  logger.info('system', `  定时:   每日 ${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`);
+  logger.info('system', '='.repeat(50));
 
   initModules();
 });
 
 process.on('SIGINT', () => {
-  log('\n正在关闭...');
+  logger.info('system', '\n正在关闭...');
   if (scheduler) scheduler.stop();
+  logger.close();
   process.exit(0);
 });
 
 process.on('SIGTERM', () => {
   if (scheduler) scheduler.stop();
+  logger.close();
   process.exit(0);
 });
 

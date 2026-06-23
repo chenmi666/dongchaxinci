@@ -1,5 +1,6 @@
 const cron = require('node-cron');
 const config = require('./config');
+const logger = require('./logger');
 
 class TrendScheduler {
   constructor(db, fetcher, analyzer, reporter) {
@@ -12,21 +13,26 @@ class TrendScheduler {
 
   async dailyJob() {
     const todayStr = new Date().toISOString().slice(0, 10);
-    const now = new Date();
-    console.log(`\n${'='.repeat(50)}`);
-    console.log(`[${now.toISOString().slice(0, 19)}] 开始每日任务...`);
-    console.log(`${'='.repeat(50)}`);
+
+    logger.info('scheduler', '========== 开始每日任务 ==========');
 
     // 1. Fetch trends
-    console.log('[1/4] 抓取 Google Trends...');
-    const allResults = await this.fetcher.fetchAll();
+    logger.info('scheduler', '[1/4] 抓取 Google Trends...');
+    let allResults;
+    try {
+      allResults = await this.fetcher.fetchAll();
+      logger.info('scheduler', '[1/4] Google Trends 抓取完成');
+    } catch (e) {
+      logger.error('scheduler', `[1/4] 抓取失败: ${e.message}`);
+      throw e;
+    }
 
     // 2. Save to DB
-    console.log('[2/4] 保存到数据库...');
+    logger.info('scheduler', '[2/4] 保存到数据库...');
     let totalFetched = 0;
     for (const [catName, items] of Object.entries(allResults)) {
       if (!items || items.length === 0) {
-        console.log(`  ${catName}: 0 条 (失败)`);
+        logger.warn('scheduler', `  ${catName}: 0 条 (失败)`);
         this.db.logFetch(todayStr, catName, 0, 'failed', '返回无数据');
         continue;
       }
@@ -40,14 +46,15 @@ class TrendScheduler {
       }
       totalFetched += count;
       this.db.logFetch(todayStr, catName, count, 'success');
-      console.log(`  ${catName}: ${count} 条`);
+      logger.info('scheduler', `  ${catName}: ${count} 条`);
     }
+    logger.info('scheduler', `[2/4] 共保存 ${totalFetched} 条趋势数据`);
 
     // 3. AI Analysis
-    console.log('[3/4] AI 分析关键词...');
+    logger.info('scheduler', '[3/4] AI 分析关键词...');
     const needing = this.db.getKeywordsNeedingAnalysis();
     if (needing && needing.length > 0) {
-      console.log(`  待分析: ${needing.length} 个关键词`);
+      logger.info('scheduler', `  待分析: ${needing.length} 个关键词`);
       if (this.analyzer.isConfigured()) {
         const results = await this.analyzer.analyzeKeywordsBatch(needing);
         for (const r of results) {
@@ -57,26 +64,28 @@ class TrendScheduler {
         }
         const eventCount = results.filter(r => r.is_event_driven).length;
         const longCount = results.length - eventCount;
-        console.log(`  ✓ 已完成 ${results.length} 个分析 (事件型: ${eventCount}, 长期需求: ${longCount})`);
-        await new Promise(r => setTimeout(r, 1000));
+        logger.info('scheduler', `  ✓ 已完成 ${results.length} 个分析 (事件型: ${eventCount}, 长期需求: ${longCount})`);
       } else {
-        console.log(`  ⚠ AI 未配置，跳过 AI 分析`);
+        logger.warn('scheduler', `  ⚠ AI 未配置，跳过 AI 分析`);
       }
     } else {
-      console.log(`  无待分析关键词`);
+      logger.info('scheduler', `  无待分析关键词`);
     }
 
     // 4. Generate report
-    console.log('[4/4] 生成每日报告...');
-    const report = this.reporter.generateDailyReport();
-    console.log(`  ✓ 报告已生成: ${report.new_keywords} 新增, ${report.top_opportunities.length} 个机会关键词`);
+    logger.info('scheduler', '[4/4] 生成每日报告...');
+    try {
+      const report = this.reporter.generateDailyReport();
+      logger.info('scheduler', `  ✓ 报告已生成: ${report.new_keywords} 新增, ${report.top_opportunities.length} 个机会关键词`);
+    } catch (e) {
+      logger.error('scheduler', `  ✗ 报告生成失败: ${e.message}`);
+    }
 
     // 5. Cleanup
     const deleted = this.db.cleanupOldTrends(90);
-    console.log(`  清理: 删除 ${deleted} 条过期趋势数据`);
+    if (deleted > 0) logger.info('scheduler', `  清理: 删除 ${deleted} 条过期趋势数据`);
 
-    console.log(`[✔] 每日任务完成 (${new Date().toISOString().slice(11, 19)})`);
-    console.log(`${'='.repeat(50)}\n`);
+    logger.info('scheduler', '========== 每日任务完成 ==========');
   }
 
   start(runImmediately) {
@@ -85,13 +94,13 @@ class TrendScheduler {
 
     if (this.task) this.task.stop();
     this.task = cron.schedule(cronExpr, () => {
-      this.dailyJob().catch(err => console.error('Scheduler job error:', err));
+      this.dailyJob().catch(err => logger.error('scheduler', `定时任务异常: ${err.message}`));
     });
 
-    console.log(`[调度器] 每日任务设定在 ${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')} 执行 (cron: ${cronExpr})`);
+    logger.info('scheduler', `每日任务设定在 ${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')} 执行`);
     if (runImmediately) {
-      console.log('[调度器] 首次启动，立即执行一次...');
-      this.dailyJob().catch(err => console.error('Initial job error:', err));
+      logger.info('scheduler', '首次启动，立即执行...');
+      this.dailyJob().catch(err => logger.error('scheduler', `首次执行异常: ${err.message}`));
     }
   }
 
