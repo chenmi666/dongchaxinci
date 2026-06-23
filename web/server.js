@@ -291,7 +291,7 @@ const PORT = parseInt(process.env.PORT || String(config.defaults.PORT), 10);
 
 app.listen(PORT, config.defaults.HOST, () => {
   logger.info('system', '='.repeat(50));
-  logger.info('system', '  Trend Opportunity Radar v2.1.0 (Node.js)');
+  logger.info('system', '  Trend Opportunity Radar v2.1.1 (Node.js)');
   logger.info('system', '  Node.js + SQLite + AI');
   logger.info('system', '='.repeat(50));
   logger.info('system', `  数据库: ${db ? db.dbPath : 'N/A'}`);

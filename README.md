@@ -1,14 +1,14 @@
 # Trend Opportunity Radar
 
-> **v2.1.0** — Node.js + SQLite + AI
+> **v2.1.1** — Node.js + SQLite + AI
 
 每日自动抓取 Google Trends（US 地区、7天内、Business、Technology、Health），通过 AI 过滤事件型热词，识别长期需求型关键词，并生成创业机会报告。
 
 ## 功能
 
 - **自动抓取** — 每天定时拉取 Google Trends 3 个分类的热词
-  - 主方案：Playwright 渲染页面后提取 DOM（26+ 条/分类，保留原始搜索量如"1万+"）
-  - 降级方案：RSS Feed（10 条/分类，页面不可用时自动切换）
+  - 主方案：Playwright 渲染页面 + 全自动翻页（最多 7 页，160+ 条/分类，保留原始搜索量如"1万+"）
+  - 降级方案：RSS Feed（~10 条/分类，页面不可用时自动切换）
 - **AI 分析** — 调用大模型判断关键词是"事件型热词"还是"长期需求"，给出机会评分 0-100
 - **90 天追踪** — 记录每个关键词的兴趣分数 + 搜索量变化，画出趋势曲线
 - **每日报告** — 自动生成 Markdown 报告，Top 20 创业机会排行
@@ -108,7 +108,7 @@ npm start
 ├── app/
 │   ├── config.js           # 配置管理（端口、路径、AI 设置）
 │   ├── database.js         # SQLite CRUD（兼容 v1 数据）
-│   ├── trends-scraper.js   # Playwright 渲染 + DOM 提取（智能等待≥10条数据）
+│   ├── trends-scraper.js   # Playwright 渲染 + DOM 提取 + 全自动翻页（30s 超时）
 │   ├── trends-fetcher.js   # 抓取调度（3级降级：Playwright → RSS → 空数据）
 │   ├── ai-analyzer.js      # AI 分析
 │   ├── reporter.js         # 报告生成
