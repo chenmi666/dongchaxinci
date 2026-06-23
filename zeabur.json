@@ -1,3 +1,5 @@
 {
+  "type": "node",
+  "buildCommand": "npm install",
   "startCommand": "node web/server.js"
 }
