@@ -1,27 +1,48 @@
 import csv
 import io
+import sys
+import traceback
 from datetime import date, datetime
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request, Form
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from app.config import settings, BASE_DIR
-from app.database import Database
-from app.trends_fetcher import TrendsFetcher
-from app.ai_analyzer import AIAnalyzer
-from app.reporter import DailyReporter
 
-_db = None
+# ─── Startup error capturing ───────────────────────────
+_STARTUP_LOG = []
+_STARTUP_OK = False
+
+
+def _log(msg):
+    _STARTUP_LOG.append(f"[{datetime.now().isoformat()}] {msg}")
+    print(msg, file=sys.stderr)
+
+
+def _init_app():
+    global _STARTUP_OK
+    try:
+        _log("Loading Database...")
+        from app.database import Database
+        db = Database()
+        _log(f"Database OK at {db.db_path}")
+        _STARTUP_OK = True
+        return db
+    except Exception as e:
+        _log(f"FATAL: {e}")
+        _log(traceback.format_exc())
+        return None
+
+
+_db = _init_app()
 _templates = None
 
 
 def get_db():
-    global _db
-    if _db is None:
-        _db = Database()
     return _db
 
 
@@ -33,14 +54,17 @@ def get_templates():
 
 
 def get_fetcher():
+    from app.trends_fetcher import TrendsFetcher
     return TrendsFetcher()
 
 
 def get_analyzer():
+    from app.ai_analyzer import AIAnalyzer
     return AIAnalyzer(get_db())
 
 
 def get_reporter():
+    from app.reporter import DailyReporter
     return DailyReporter(get_db(), get_analyzer())
 
 
@@ -57,6 +81,25 @@ static_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
 
+# ─── Debug ─────────────────────────────────────────────
+
+@app.get("/debug", response_class=PlainTextResponse)
+def debug_log():
+    status = "OK" if _STARTUP_OK else "FAILED"
+    lines = [f"Status: {status}", f"Routes: {len(app.routes)}", ""]
+    lines.extend(_STARTUP_LOG)
+    lines.append("")
+    if _db is None:
+        lines.append("DB is None - startup failed")
+    else:
+        try:
+            s = _db.get_stats()
+            lines.append(f"Stats: {s}")
+        except Exception as e:
+            lines.append(f"Stats error: {e}")
+    return "\n".join(lines)
+
+
 # ─── HTML Pages ──────────────────────────────────────────────
 
 @app.get("/", response_class=HTMLResponse)
@@ -69,6 +112,8 @@ def dashboard(request: Request):
 @app.get("/keyword/{kw_id}", response_class=HTMLResponse)
 def keyword_detail(request: Request, kw_id: int):
     db = get_db()
+    if db is None:
+        return HTMLResponse("数据库未初始化", status_code=500)
     kw = db.get_keyword_by_id(kw_id)
     if not kw:
         return HTMLResponse("关键词不存在", status_code=404)
@@ -85,6 +130,8 @@ def reports_page(request: Request):
 @app.get("/report/{report_date}", response_class=HTMLResponse)
 def report_detail(request: Request, report_date: str):
     db = get_db()
+    if db is None:
+        return HTMLResponse("数据库未初始化", status_code=500)
     report = db.get_report(report_date)
     if not report:
         return HTMLResponse("报告不存在", status_code=404)
@@ -101,6 +148,8 @@ def history_page(request: Request):
 @app.get("/settings", response_class=HTMLResponse)
 def settings_page(request: Request):
     db = get_db()
+    if db is None:
+        return HTMLResponse("数据库未初始化", status_code=500)
     api_key = settings.get_ai_api_key(db)
     model = settings.get_ai_model(db)
     api_base = settings.get_ai_api_base(db)
@@ -121,6 +170,8 @@ def settings_page(request: Request):
 @app.get("/api/dashboard")
 def api_dashboard(category: str = None):
     db = get_db()
+    if db is None:
+        return {"error": "数据库未初始化"}
     top = db.get_top_opportunities(limit=20, category=category)
     stats = db.get_stats()
     rising = db.get_trending_up_keywords(min_days=3, limit=10)
@@ -138,6 +189,8 @@ def api_dashboard(category: str = None):
 @app.get("/api/keyword/{kw_id}")
 def api_keyword(kw_id: int):
     db = get_db()
+    if db is None:
+        return JSONResponse({"error": "数据库未初始化"}, status_code=500)
     kw = db.get_keyword_by_id(kw_id)
     if not kw:
         return JSONResponse({"error": "not found"}, status_code=404)
@@ -157,6 +210,8 @@ def api_keyword(kw_id: int):
 @app.get("/api/keyword/{kw_id}/trend")
 def api_keyword_trend(kw_id: int):
     db = get_db()
+    if db is None:
+        return {"error": "数据库未初始化"}
     history = db.get_trend_history(kw_id, days=90)
     return {"history": history}
 
@@ -164,6 +219,8 @@ def api_keyword_trend(kw_id: int):
 @app.get("/api/reports")
 def api_reports():
     db = get_db()
+    if db is None:
+        return {"reports": []}
     reports = db.get_reports(limit=30)
     return {"reports": reports}
 
@@ -171,6 +228,8 @@ def api_reports():
 @app.get("/api/history")
 def api_history(category: str = None, status: str = None, search: str = None):
     db = get_db()
+    if db is None:
+        return {"keywords": []}
     if search:
         keywords = db.search_keywords(search)
     elif status:
@@ -179,10 +238,7 @@ def api_history(category: str = None, status: str = None, search: str = None):
             keywords = [k for k in keywords if k["category_name"] == category]
     elif category:
         top = db.get_top_opportunities(limit=200, category=category)
-        results = []
-        for t in top:
-            results.append(t)
-        keywords = results[:200]
+        keywords = top[:200]
     else:
         lt = db.get_keywords_by_status("long_term")
         ev = db.get_keywords_by_status("event_driven")
@@ -192,12 +248,18 @@ def api_history(category: str = None, status: str = None, search: str = None):
 
 @app.get("/api/stats")
 def api_stats():
-    return get_db().get_stats()
+    db = get_db()
+    if db is None:
+        return {"error": "数据库未初始化", "total_keywords": 0}
+    return db.get_stats()
 
 
 @app.get("/api/fetch_logs")
 def api_fetch_logs():
-    return {"logs": get_db().get_recent_fetch_logs()}
+    db = get_db()
+    if db is None:
+        return {"logs": []}
+    return {"logs": db.get_recent_fetch_logs()}
 
 
 # ─── Settings API ────────────────────────────────────────────
@@ -212,6 +274,8 @@ def api_save_settings(
     proxy: str = Form(""),
 ):
     db = get_db()
+    if db is None:
+        return {"status": "error", "message": "数据库未初始化"}
     if ai_api_key:
         db.set_setting("ai_api_key", ai_api_key)
     db.set_setting("ai_model", ai_model)
@@ -246,6 +310,8 @@ def api_test_openai(
 @app.get("/api/export/csv")
 def export_csv():
     db = get_db()
+    if db is None:
+        return PlainTextResponse("数据库未初始化", status_code=500)
     top = db.get_top_opportunities(limit=200)
     output = io.StringIO()
     w = csv.DictWriter(output, fieldnames=[
@@ -279,6 +345,8 @@ def export_csv():
 @app.post("/api/trigger_fetch")
 def trigger_fetch():
     db = get_db()
+    if db is None:
+        return {"status": "error", "message": "数据库未初始化"}
     from app.scheduler import TrendScheduler
     sched = TrendScheduler(db, get_fetcher(), get_analyzer(), get_reporter())
     sched.daily_job()

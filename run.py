@@ -1,20 +1,26 @@
 """
-Trend Opportunity Radar - 启动入口 (支持 Zeabur)
+Trend Opportunity Radar - 启动入口
 """
 import sys
 import os
 import signal
+import traceback
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import uvicorn
-from app.database import Database
-from app.trends_fetcher import TrendsFetcher
-from app.ai_analyzer import AIAnalyzer
-from app.reporter import DailyReporter
-from app.scheduler import TrendScheduler
-from app.config import settings
+try:
+    import uvicorn
+    from app.config import settings
+    from app.database import Database
+    from app.trends_fetcher import TrendsFetcher
+    from app.ai_analyzer import AIAnalyzer
+    from app.reporter import DailyReporter
+    from app.scheduler import TrendScheduler
+except Exception as e:
+    print(f"FATAL import error: {e}", file=sys.stderr)
+    traceback.print_exc(file=sys.stderr)
+    sys.exit(1)
 
 db = Database()
 
@@ -29,22 +35,16 @@ def main():
 
     print("=" * 50)
     print("  Trend Opportunity Radar v1.0")
-    print("  Python + SQLite + OpenAI")
+    print("  Python + SQLite + AI")
     print("=" * 50)
     print(f"  Database: {settings.DATABASE_PATH}")
     print(f"  Web:      0.0.0.0:{port}")
 
     has_key = bool(settings.get_ai_api_key(db))
     if has_key:
-        model = settings.get_ai_model(db)
-        base = settings.get_ai_api_base(db)
-        print(f"  AI:       [OK] {model} @ {base}")
+        print(f"  AI:       [OK] {settings.get_ai_model(db)}")
     else:
         print(f"  AI:       [!!] 请在 /settings 页面配置 API Key")
-
-    proxy = settings.get_proxy(db)
-    if proxy:
-        print(f"  Proxy:    {proxy}")
 
     print(f"  Schedule: 每日 {settings.get_fetch_time(db)[0]:02d}:{settings.get_fetch_time(db)[1]:02d}")
     print("=" * 50)
@@ -69,4 +69,9 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        print(f"FATAL: {e}", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
+        sys.exit(1)
