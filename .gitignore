@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+data/trends.db
+data/raw/
+data/export/
+.env
