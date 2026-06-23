@@ -25,12 +25,15 @@ npm install
 
 ### 2. 启动
 
+**方式 A — 双击启动（推荐）**
 ```bash
-# 推荐
-npm start
+# 直接双击 start.bat，自动打开浏览器
+start.bat
+```
 
-# 开发模式（热重载）
-npm run dev
+**方式 B — 命令行**
+```bash
+npm start
 ```
 
 浏览器打开 **http://localhost:8000**
@@ -49,6 +52,8 @@ npm run dev
 ### 4. 触发抓取
 
 配置完成后，在主面板点击 **「立即同步」** 按钮，或等待每日定时任务自动执行。
+
+> **本地部署小提示**：电脑开机后双击 `start.bat` 启动服务，打开 Dashboard 后点击 **立即同步** 即可手动抓取。服务窗口关闭后服务即停止。
 
 ### 5. 环境变量
 
@@ -105,6 +110,7 @@ npm start
 
 ```
 ├── package.json            # 依赖管理与版本
+├── start.bat               # Windows 一键启动（双击即可）
 ├── app/
 │   ├── config.js           # 配置管理（端口、路径、AI 设置）
 │   ├── database.js         # SQLite CRUD（兼容 v1 数据）
