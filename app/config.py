@@ -9,7 +9,9 @@ DB_PATH = DATA_DIR / "trends.db"
 
 
 class Settings:
-    DATABASE_PATH: str = str(DB_PATH)
+    @property
+    def DATABASE_PATH(self):
+        return os.getenv("DATABASE_PATH", str(DB_PATH))
 
     TRENDS_GEO: str = "US"
     TRENDS_TIMEFRAME: str = "now 7-d"
@@ -31,10 +33,11 @@ class Settings:
     REPORT_TOP_N: int = 20
 
     HOST: str = "0.0.0.0"
-    PORT: int = 8000
-    RELOAD: bool = True
+    PORT: int = int(os.getenv("PORT", "8000"))
+    RELOAD: bool = os.getenv("RELOAD", "").lower() in ("1", "true")
 
     PROXY: str = ""
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "")
 
     @classmethod
     def get_ai_api_key(cls, db=None):
