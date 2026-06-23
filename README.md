@@ -1,5 +1,7 @@
 # Trend Opportunity Radar
 
+> **v2.0.0** — Node.js + SQLite + AI
+
 每日自动抓取 Google Trends（US 地区、7天内、Business、Technology、Health），通过 AI 过滤事件型热词，识别长期需求型关键词，并生成创业机会报告。
 
 ## 功能
@@ -15,17 +17,17 @@
 ### 1. 安装
 
 ```bash
-pip install -r requirements.txt
+npm install
 ```
 
 ### 2. 启动
 
 ```bash
-# 方式 A（推荐）
-python run.py
+# 推荐
+npm start
 
-# 方式 B
-uvicorn web.main:app --host 0.0.0.0 --port 8000
+# 开发模式（热重载）
+npm run dev
 ```
 
 浏览器打开 **http://localhost:8000**
@@ -64,53 +66,52 @@ uvicorn web.main:app --host 0.0.0.0 --port 8000
 
 容器启动崩溃时可通过 `/log` 查看完整启动日志。
 
-## Zeabur 部署
+## 部署
 
-一键部署到 Zeabur，自动识别 Python + FastAPI。
-
-1. Fork 或推送此仓库到 GitHub
-2. 在 Zeabur 创建项目，关联仓库
-3. 设置环境变量 `PORT=8080`（Zeabur 自动注入）
-4. 可选：在 `zeabur.json` 中覆盖启动命令
+### Zeabur
 
 ```json
 {
-  "startCommand": "python run.py"
+  "startCommand": "node web/server.js"
 }
+```
+
+### 独立服务器
+
+```bash
+node web/server.js
 ```
 
 ## 技术栈
 
 | 组件 | 选型 |
 |------|------|
-| 后端 | Python + FastAPI |
-| 数据库 | SQLite (WAL 模式) |
-| AI | OpenAI / GLM (支持任意兼容接口) |
-| 趋势数据 | pytrends |
-| 调度 | APScheduler |
-| 前端 | Jinja2 + Bootstrap 5 + Chart.js |
+| 后端 | Node.js + Express.js |
+| 数据库 | SQLite (better-sqlite3, WAL 模式) |
+| AI | OpenAI SDK（支持任意兼容接口） |
+| 趋势数据 | google-trends-api |
+| 调度 | node-cron |
+| 前端 | EJS + Bootstrap 5 + Chart.js |
 
 ## 项目结构
 
 ```
-├── run.py                 # 启动入口（uvicorn + 调度器）
-├── requirements.txt
-├── zeabur.json            # Zeabur 部署配置
+├── package.json            # 依赖管理与版本
 ├── app/
-│   ├── config.py          # 配置管理（端口、路径、AI 设置）
-│   ├── database.py        # SQLite CRUD
-│   ├── trends_fetcher.py  # Google Trends 抓取（3种降级策略）
-│   ├── ai_analyzer.py     # AI 分析
-│   ├── reporter.py        # 报告生成
-│   └── scheduler.py       # APScheduler 每日调度
+│   ├── config.js           # 配置管理（端口、路径、AI 设置）
+│   ├── database.js         # SQLite CRUD（兼容 v1 数据）
+│   ├── trends-fetcher.js   # Google Trends 抓取（3种降级策略）
+│   ├── ai-analyzer.js      # AI 分析
+│   ├── reporter.js         # 报告生成
+│   └── scheduler.js        # node-cron 每日调度
 ├── web/
-│   ├── main.py            # FastAPI 路由 + 启动日志
-│   ├── templates/         # Jinja2 模板（6页）
-│   └── static/            # CSS
+│   ├── server.js           # Express 路由 + 启动日志
+│   ├── views/              # EJS 模板（7页）
+│   └── static/             # CSS
 └── data/
-    ├── trends.db          # SQLite 数据库
-    ├── startup.log        # 启动日志
-    └── raw/               # 原始 CSV 备份
+    ├── trends.db           # SQLite 数据库（v1/v2 兼容）
+    ├── startup.log         # 启动日志
+    └── raw/                # 原始 CSV 备份
 ```
 
 ## 页面一览
@@ -125,3 +126,24 @@ uvicorn web.main:app --host 0.0.0.0 --port 8000
 | `/settings` | 系统设置 |
 | `/debug` | 启动诊断 |
 | `/log` | 启动日志文件内容 |
+
+## API 一览
+
+| 方法 | 路由 | 说明 |
+|------|------|------|
+| GET | `/api/dashboard` | 主面板数据（含分类筛选） |
+| GET | `/api/stats` | 系统统计 |
+| GET | `/api/keyword/{id}` | 关键词详情 + 趋势 + AI分析 |
+| GET | `/api/keyword/{id}/trend` | 关键词趋势数据 |
+| GET | `/api/history` | 历史关键词搜索/筛选 |
+| GET | `/api/reports` | 每日报告列表 |
+| GET | `/api/fetch-logs` | 抓取日志 |
+| GET | `/api/export/csv` | 导出机会 CSV |
+| POST | `/api/settings` | 保存设置 |
+| POST | `/api/settings/test` | 测试 AI 连接 |
+| POST | `/api/trigger-fetch` | 手动触发抓取+分析 |
+
+## 从 v1 迁移
+
+v2 使用 Node.js 重写，数据层完全兼容 v1（Python 版）的 SQLite Schema。
+现有 `data/trends.db` 可直接使用，无需迁移。

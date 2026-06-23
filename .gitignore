@@ -1,6 +1,17 @@
+# Python
 __pycache__/
 *.pyc
+
+# Node.js
+node_modules/
+
+# Data
 data/trends.db
+data/trends.db-shm
+data/trends.db-wal
 data/raw/
 data/export/
+data/startup.log
+
+# Env
 .env

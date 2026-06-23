@@ -1,0 +1,29 @@
+<%- include('base', {
+  title: '每日报告',
+  body: `
+<h3 class="mb-4"><i class="bi bi-file-text"></i> 每日报告</h3>
+<div id="reportList" class="list-group"></div>
+
+<script>
+async function loadReports() {
+    const res = await fetch('/api/reports');
+    const data = await res.json();
+    const list = document.getElementById('reportList');
+    list.innerHTML = '';
+    if (!data.reports || data.reports.length === 0) {
+        list.innerHTML = '<div class="text-center text-muted py-5">暂无报告，等待首次抓取...</div>';
+        return;
+    }
+    data.reports.forEach(r => {
+        list.innerHTML += \`<a href="/report/\${r.report_date}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+            <div>
+                <strong>\${r.report_date}</strong>
+                <small class="text-muted ms-3">总词 \${r.total_keywords} | 新增 \${r.new_keywords} | 长期 \${r.long_term_cnt} | 事件 \${r.event_cnt}</small>
+            </div>
+            <span class="badge bg-primary rounded-pill">\${r.total_keywords}</span>
+        </a>\`;
+    });
+}
+loadReports();
+</script>
+`}) %>

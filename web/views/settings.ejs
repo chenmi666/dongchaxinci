@@ -1,0 +1,131 @@
+<%- include('base', {
+  title: '设置',
+  body: `
+<h3 class="mb-4"><i class="bi bi-gear"></i> 系统设置</h3>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">AI 配置</div>
+            <div class="card-body">
+                <form id="settingsForm">
+                    <div class="mb-3">
+                        <label class="form-label">API Key <span class="text-danger">*</span></label>
+                        <input type="password" class="form-control" id="apiKey" value="${api_key || ''}" placeholder="sk-... / 你的GLM API Key">
+                        <div class="form-text">支持 OpenAI / GLM 等任何兼容接口的 API Key</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">API 地址 <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="apiBase" value="${api_base || 'https://open.bigmodel.cn/api/paas/v4/'}" placeholder="https://open.bigmodel.cn/api/paas/v4/">
+                        <div class="form-text">GLM 默认: https://open.bigmodel.cn/api/paas/v4/ | OpenAI 默认: https://api.openai.com/v1</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">AI 分析模型</label>
+                        <select class="form-select" id="model">
+                            <option value="glm-5.2"${model === 'glm-5.2' ? ' selected' : ''}>GLM-5.2 (默认)</option>
+                            <option value="glm-5.1"${model === 'glm-5.1' ? ' selected' : ''}>GLM-5.1</option>
+                            <option value="glm-5.0"${model === 'glm-5.0' ? ' selected' : ''}>GLM-5.0</option>
+                            <option value="gpt-4o-mini"${model === 'gpt-4o-mini' ? ' selected' : ''}>GPT-4o-mini</option>
+                            <option value="gpt-4o"${model === 'gpt-4o' ? ' selected' : ''}>GPT-4o</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">每日抓取时间</label>
+                        <div class="row g-2">
+                            <div class="col-6">
+                                <input type="number" class="form-control" id="fetchHour" value="${fetch_hour}" min="0" max="23">
+                            </div>
+                            <div class="col-6">
+                                <input type="number" class="form-control" id="fetchMinute" value="${fetch_minute}" min="0" max="59">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">HTTP 代理 <small class="text-muted">(可选，用于访问 Google Trends)</small></label>
+                        <input type="text" class="form-control" id="proxy" value="${proxy || ''}" placeholder="http://127.0.0.1:7890">
+                        <div class="form-text">如果 trends.google.com 被屏蔽，填写代理地址</div>
+                    </div>
+                    <button type="button" class="btn btn-primary me-2" onclick="saveSettings()">
+                        <i class="bi bi-save"></i> 保存设置
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary" onclick="testConnection()">
+                        <i class="bi bi-plug"></i> 测试连接
+                    </button>
+                </form>
+                <div id="settingsMsg" class="mt-3"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">系统状态</div>
+            <div class="card-body">
+                <div id="sysStats">
+                    <div class="text-center text-muted py-3">加载中...</div>
+                </div>
+            </div>
+        </div>
+        <div class="card mt-3">
+            <div class="card-header">数据维护</div>
+            <div class="card-body">
+                <button class="btn btn-warning btn-sm" onclick="if(confirm('确定要执行抓取？')) fetch('/api/trigger-fetch', {method:'POST'})">
+                    <i class="bi bi-arrow-clockwise"></i> 立即执行抓取+分析
+                </button>
+                <a href="/api/export/csv" class="btn btn-success btn-sm ms-2">
+                    <i class="bi bi-download"></i> 导出机会 CSV
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+async function loadStats() {
+    const res = await fetch('/api/stats');
+    const s = await res.json();
+    document.getElementById('sysStats').innerHTML = \`
+        <table class="table table-sm">
+            <tr><td>关键词总数</td><td class="fw-bold">\${s.total_keywords}</td></tr>
+            <tr><td>长期需求型</td><td class="fw-bold text-success">\${s.long_term}</td></tr>
+            <tr><td>事件型</td><td class="fw-bold text-warning">\${s.event_driven}</td></tr>
+            <tr><td>待分析</td><td class="fw-bold text-secondary">\${s.pending}</td></tr>
+            <tr><td>AI分析总次数</td><td class="fw-bold">\${s.total_analyses}</td></tr>
+            <tr><td>趋势记录</td><td class="fw-bold">\${s.total_trends}</td></tr>
+            <tr><td>每日报告</td><td class="fw-bold">\${s.total_reports}</td></tr>
+            <tr><td>最后同步</td><td class="fw-bold">\${s.last_fetch || '从未'}</td></tr>
+        </table>
+    \`;
+}
+
+async function saveSettings() {
+    const form = new URLSearchParams();
+    form.append('ai_api_key', document.getElementById('apiKey').value);
+    form.append('ai_model', document.getElementById('model').value);
+    form.append('ai_api_base', document.getElementById('apiBase').value);
+    form.append('fetch_hour', document.getElementById('fetchHour').value);
+    form.append('fetch_minute', document.getElementById('fetchMinute').value);
+    form.append('proxy', document.getElementById('proxy').value);
+    const res = await fetch('/api/settings', { method: 'POST', body: form, headers: {'Content-Type': 'application/x-www-form-urlencoded'} });
+    const data = await res.json();
+    document.getElementById('settingsMsg').innerHTML = '<div class="alert alert-success">设置已保存</div>';
+    setTimeout(() => document.getElementById('settingsMsg').innerHTML = '', 3000);
+}
+
+async function testConnection() {
+    const msg = document.getElementById('settingsMsg');
+    msg.innerHTML = '<div class="alert alert-info">测试中...</div>';
+    const form = new URLSearchParams();
+    form.append('api_key', document.getElementById('apiKey').value);
+    form.append('model', document.getElementById('model').value);
+    form.append('api_base', document.getElementById('apiBase').value);
+    const res = await fetch('/api/settings/test', { method: 'POST', body: form, headers: {'Content-Type': 'application/x-www-form-urlencoded'} });
+    const data = await res.json();
+    msg.innerHTML = data.status === 'ok'
+        ? \`<div class="alert alert-success">\${data.message}</div>\`
+        : \`<div class="alert alert-danger">连接失败: \${data.message}</div>\`;
+}
+
+loadStats();
+</script>
+`}) %>
