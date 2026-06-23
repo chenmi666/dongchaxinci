@@ -88,6 +88,9 @@ class DatabaseManager {
     insertCat.run('Business', 3);
     insertCat.run('Technology', 18);
     insertCat.run('Health', 7);
+
+    // v2.1.0: add search_volume column to trends_daily (safe if already exists)
+    try { this.db.exec('ALTER TABLE trends_daily ADD COLUMN search_volume TEXT DEFAULT \'\''); } catch (_) {}
   }
 
   close() {
@@ -186,17 +189,17 @@ class DatabaseManager {
   }
 
   // ---- trends_daily ----
-  upsertTrend(keywordId, dateStr, score, rank) {
+  upsertTrend(keywordId, dateStr, score, rank, searchVolume) {
     this.db.prepare(
-      `INSERT OR REPLACE INTO trends_daily(keyword_id, date, interest_score, rank)
-       VALUES (?, ?, ?, ?)`
-    ).run(keywordId, dateStr, score, rank || null);
+      `INSERT OR REPLACE INTO trends_daily(keyword_id, date, interest_score, rank, search_volume)
+       VALUES (?, ?, ?, ?, ?)`
+    ).run(keywordId, dateStr, score, rank || null, searchVolume || '');
   }
 
   getTrendHistory(keywordId, days) {
     const since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
     return this.db.prepare(
-      'SELECT date, interest_score FROM trends_daily WHERE keyword_id=? AND date >= ? ORDER BY date'
+      'SELECT date, interest_score, search_volume FROM trends_daily WHERE keyword_id=? AND date >= ? ORDER BY date'
     ).all(keywordId, since);
   }
 
@@ -215,7 +218,8 @@ class DatabaseManager {
       SELECT k.*, c.name as category_name,
              COALESCE(a.opportunity_score, 0) as opportunity_score,
              COALESCE(a.is_event_driven, 1) as is_event_driven,
-             td1.interest_score as score_today
+              td1.interest_score as score_today,
+              td1.search_volume
       FROM keywords k
       JOIN categories c ON c.id = k.category_id
       JOIN trends_daily td1 ON td1.keyword_id = k.id AND td1.date = ?
@@ -234,6 +238,12 @@ class DatabaseManager {
   cleanupOldTrends(days) {
     const cutoff = new Date(Date.now() - (days || 90) * 86400000).toISOString().slice(0, 10);
     const result = this.db.prepare('DELETE FROM trends_daily WHERE date < ?').run(cutoff);
+    return result.changes;
+  }
+
+  cleanupOldLogs(retainDays) {
+    const cutoff = new Date(Date.now() - retainDays * 86400000).toISOString();
+    const result = this.db.prepare("DELETE FROM fetch_logs WHERE created_at < ?").run(cutoff);
     return result.changes;
   }
 

@@ -65,19 +65,28 @@ class TrendsScraper {
       }
       await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
-      // Smart wait: wait until body text contains a search volume indicator
+      // Smart wait: wait until at least 10 volume indicators appear
+      let preCount = 0;
       try {
         await page.waitForFunction(() => {
           const text = document.body.innerText;
-          return /[0-9,]+\+/.test(text) || /[0-9]+万\+/.test(text);
-        }, { timeout: 15000 });
+          const m = text.match(/[0-9]+万\+|[0-9]{4,}\+|[0-9]+,[0-9]+\+/g);
+          return m && m.length >= 10;
+        }, { timeout: 20000 });
       } catch (_) {
-        logger.debug('scraper', `[${catName}] 等待数据超时，尝试直接提取`);
+        logger.debug('scraper', `[${catName}] 等待超时(20s)，可能数据较少`);
       }
+      preCount = await page.evaluate(() => {
+        const text = document.body.innerText;
+        return (text.match(/[0-9]+万\+|[0-9]{4,}\+|[0-9]+,[0-9]+\+/g) || []).length;
+      });
+      logger.debug('scraper', `[${catName}] 等待后可见趋势: ${preCount} 条, 等待10s渲染...`);
+
       // Extra settle time for JS rendering
-      await page.waitForTimeout(2000);
+      await page.waitForTimeout(10000);
 
       items = await this._parseDom(page, catName);
+      logger.info('scraper', `[${catName}] 实际提取: ${items.length} 条`);
     }
 
     if (!items || items.length === 0) {
@@ -120,9 +129,11 @@ class TrendsScraper {
       } else {
         score = Math.max(1, 100 - i * 2);
       }
+      const searchVolume = typeof volume === 'number' && volume > 0 ? String(volume) : '';
       return {
         keyword,
         interest_score: score,
+        search_volume: searchVolume,
         rank: i + 1,
         category: catName,
         date: today,
@@ -173,6 +184,7 @@ class TrendsScraper {
       items.push({
         keyword: kw,
         interest_score: score,
+        search_volume: volStr,
         rank: items.length + 1,
         category: catName,
         date: today,

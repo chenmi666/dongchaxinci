@@ -40,7 +40,7 @@ class TrendScheduler {
       let count = 0;
       for (const item of items) {
         const { kwId } = this.db.upsertKeyword(item.keyword, catId, item.date);
-        this.db.upsertTrend(kwId, item.date, item.interest_score, item.rank);
+        this.db.upsertTrend(kwId, item.date, item.interest_score, item.rank, item.search_volume);
         this.db.updateKeywordPeak(kwId, item.interest_score);
         count++;
       }
@@ -84,6 +84,8 @@ class TrendScheduler {
     // 5. Cleanup
     const deleted = this.db.cleanupOldTrends(90);
     if (deleted > 0) logger.info('scheduler', `  清理: 删除 ${deleted} 条过期趋势数据`);
+    const logDeleted = this.db.cleanupOldLogs(7);
+    if (logDeleted > 0) logger.info('scheduler', `  清理: 删除 ${logDeleted} 条旧抓取日志`);
 
     logger.info('scheduler', '========== 每日任务完成 ==========');
   }
