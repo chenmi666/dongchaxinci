@@ -11,7 +11,7 @@ const defaults = {
   TRENDS_GEO: 'US',
   TRENDS_TIMEFRAME: 'now 7-d',
   TRENDS_CATEGORIES: { Business: 1, Technology: 2, Health: 3 },
-  TRENDS_MAX_KEYWORDS: 100,
+  TRENDS_MAX_KEYWORDS: 1000,
   AI_MODEL: 'glm-5.2',
   AI_MAX_TOKENS: 500,
   AI_TEMPERATURE: 0.3,

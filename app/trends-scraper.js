@@ -3,7 +3,7 @@ const config = require('./config');
 const logger = require('./logger');
 
 const CATEGORY_IDS = { Business: 3, Technology: 18, Health: 7 };
-const MAX_KEYWORDS = 100;
+const MAX_KEYWORDS = 1000;
 
 class TrendsScraper {
   async scrapeAll() {
@@ -71,9 +71,9 @@ class TrendsScraper {
         await page.waitForFunction(() => {
           const text = document.body.innerText;
           return /[0-9]+万\+|[0-9]{4,}\+|[0-9]+,[0-9]+\+/.test(text);
-        }, { timeout: 20000 });
+        }, { timeout: 30000 });
       } catch (_) {
-        logger.info('scraper', `[${catName}] 等待超时(20s)，可能无数据`);
+        logger.info('scraper', `[${catName}] 等待超时(30s)，可能无数据`);
       }
       preCount = await page.evaluate(() => {
         const text = document.body.innerText;
@@ -86,6 +86,32 @@ class TrendsScraper {
 
       items = await this._parseDom(page, catName);
       logger.info('scraper', `[${catName}] 实际提取: ${items.length} 条`);
+    }
+
+    // Pagination: navigate through all pages
+    if (items && items.length > 0) {
+      const pageInfo = await page.evaluate(() => {
+        const text = document.body.innerText;
+        const m = text.match(/第 \d+ – \d+ 行（共 (\d+) 行）/);
+        return m ? Math.ceil(parseInt(m[1], 10) / 25) : 1;
+      });
+      if (pageInfo > 1) {
+        logger.info('scraper', `[${catName}] 共 ${pageInfo} 页, 开始翻页...`);
+        for (let p = 2; p <= pageInfo && items.length < MAX_KEYWORDS; p++) {
+          const nextBtn = await page.$('button[aria-label="转到下一页"]');
+          if (!nextBtn) break;
+          if (await nextBtn.evaluate(el => el.hasAttribute('disabled') || el.getAttribute('aria-disabled') === 'true')) break;
+          await nextBtn.click();
+          try {
+            await page.waitForFunction(() => /[0-9]+万\+|[0-9]{4,}\+|[0-9]+,[0-9]+\+/.test(document.body.innerText), { timeout: 10000 });
+          } catch (_) {}
+          await page.waitForTimeout(2000);
+          const pageItems = await this._parseDom(page, catName);
+          items.push(...pageItems);
+          logger.info('scraper', `[${catName}] 第${p}页: +${pageItems.length} 条`);
+        }
+        items.forEach((item, i) => item.rank = i + 1);
+      }
     }
 
     if (!items || items.length === 0) {
@@ -151,6 +177,8 @@ class TrendsScraper {
       'search', 'info', 'close', '首页', '探索', '时下流行', '登录',
       '搜索趋势', '导出', '趋势细分', '趋势', '活跃', '新', '按标题排序',
       '按搜索量排序', '按新近度排序', '按相关性', '所有趋势', '搜索趋势',
+      '每页行数', '转到第一页', '返回上一页', '转到下一页', '转到最后一页',
+      '隐私权', '条款', '发送反馈', '关于', '帮助', '了解详情', '知道了',
     ]);
 
     const items = [];
@@ -161,7 +189,9 @@ class TrendsScraper {
       const kw = lines[i];
       if (skips.has(kw) || kw.length < 3) continue;
       if (kw.startsWith('上次更新') || kw.startsWith('Trends') || kw.startsWith('Google 趋势')) continue;
-      if (kw.match(volRe) || kw.includes('%')) continue; // volume/pct lines
+      if (kw.startsWith('第 ') && kw.includes('行（共')) continue; // pagination text
+      if (kw.match(/^[0-9]+$/) && parseInt(kw, 10) < 200) continue; // page numbers
+      if (kw.match(volRe) || kw.includes('%') || kw.startsWith('持续了') || kw === 'timelapse') continue;
 
       // Expect next line to be a search volume
       if (i + 1 >= lines.length || !lines[i + 1].match(volRe)) continue;
