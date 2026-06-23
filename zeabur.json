@@ -1,4 +1,3 @@
 {
-  "startCommand": "python run.py",
-  "dockerfile": "Dockerfile"
+  "startCommand": "python run.py"
 }

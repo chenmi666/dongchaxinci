@@ -1,5 +1,6 @@
 import csv
 import io
+import os
 import sys
 import traceback
 from datetime import date, datetime
@@ -13,14 +14,23 @@ from fastapi.templating import Jinja2Templates
 
 from app.config import settings, BASE_DIR
 
-# ─── Startup error capturing ───────────────────────────
+# ─── Startup error capturing (file + memory) ───────────
 _STARTUP_LOG = []
 _STARTUP_OK = False
+_LOG_FILE = Path(os.environ.get("STARTUP_LOG", str(BASE_DIR / "data" / "startup.log")))
 
 
 def _log(msg):
-    _STARTUP_LOG.append(f"[{datetime.now().isoformat()}] {msg}")
-    print(msg, file=sys.stderr)
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    line = f"[{ts}] {msg}"
+    _STARTUP_LOG.append(line)
+    print(line, file=sys.stderr)
+    try:
+        _LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with open(str(_LOG_FILE), "a", encoding="utf-8") as f:
+            f.write(line + "\n")
+    except Exception:
+        pass
 
 
 def _init_app():
@@ -35,11 +45,19 @@ def _init_app():
     except Exception as e:
         _log(f"FATAL: {e}")
         _log(traceback.format_exc())
+        _STARTUP_OK = False
         return None
 
 
-_db = _init_app()
+_db = None
 _templates = None
+
+try:
+    _db = _init_app()
+    _log("Module init complete")
+except Exception as e:
+    _log(f"MODULE INIT FATAL: {e}")
+    _log(traceback.format_exc())
 
 
 def get_db():
@@ -49,7 +67,11 @@ def get_db():
 def get_templates():
     global _templates
     if _templates is None:
-        _templates = Jinja2Templates(directory=str(BASE_DIR / "web" / "templates"))
+        try:
+            _templates = Jinja2Templates(directory=str(BASE_DIR / "web" / "templates"))
+        except Exception as e:
+            _log(f"Templates init error: {e}")
+            raise
     return _templates
 
 
@@ -70,15 +92,21 @@ def get_reporter():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    get_db()
+    try:
+        get_db()
+    except Exception as e:
+        _log(f"Lifespan startup error: {e}")
     yield
 
 
 app = FastAPI(title="Trend Opportunity Radar", lifespan=lifespan)
 
-static_dir = BASE_DIR / "web" / "static"
-static_dir.mkdir(parents=True, exist_ok=True)
-app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+try:
+    static_dir = BASE_DIR / "web" / "static"
+    static_dir.mkdir(parents=True, exist_ok=True)
+    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+except Exception as e:
+    _log(f"Static mount error: {e}")
 
 
 # ─── Debug ─────────────────────────────────────────────
@@ -98,6 +126,17 @@ def debug_log():
         except Exception as e:
             lines.append(f"Stats error: {e}")
     return "\n".join(lines)
+
+
+@app.get("/log", response_class=PlainTextResponse)
+def serve_startup_log():
+    try:
+        if _LOG_FILE.exists():
+            text = _LOG_FILE.read_text(encoding="utf-8")
+            return text or "(empty log)"
+        return "(no log file)"
+    except Exception as e:
+        return f"(log error: {e})"
 
 
 # ─── HTML Pages ──────────────────────────────────────────────
