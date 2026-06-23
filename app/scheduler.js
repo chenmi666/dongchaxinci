@@ -81,11 +81,11 @@ class TrendScheduler {
       logger.error('scheduler', `  ✗ 报告生成失败: ${e.message}`);
     }
 
-    // 5. Cleanup
-    const deleted = this.db.cleanupOldTrends(90);
-    if (deleted > 0) logger.info('scheduler', `  清理: 删除 ${deleted} 条过期趋势数据`);
-    const logDeleted = this.db.cleanupOldLogs(7);
-    if (logDeleted > 0) logger.info('scheduler', `  清理: 删除 ${logDeleted} 条旧抓取日志`);
+    // 5. Cleanup (disabled: 永久保存所有数据)
+    // const deleted = this.db.cleanupOldTrends(90);
+    // if (deleted > 0) logger.info('scheduler', `  清理: 删除 ${deleted} 条过期趋势数据`);
+    // const logDeleted = this.db.cleanupOldLogs(7);
+    // if (logDeleted > 0) logger.info('scheduler', `  清理: 删除 ${logDeleted} 条旧抓取日志`);
 
     logger.info('scheduler', '========== 每日任务完成 ==========');
   }
